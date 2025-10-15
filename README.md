@@ -56,3 +56,13 @@ This project is licensed under the **MIT License** — free to use, modify, and 
 
 ### ⚔️ TIMCODE
 **Redefining AI. Reclaiming Control.**
+
+---
+
+## 🎬 Demo Video
+
+Watch the demo video here: [▶️ Click to Watch on Google Drive](https://drive.google.com/file/d/1gpB25-aOpUim_uwGAPsjTAMjXZmuPnOZ/view?usp=sharing)
+
+---
+
+
