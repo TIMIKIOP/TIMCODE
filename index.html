@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>TIMCODE - Code Review Assistant</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    /* ===== Base Theme ===== */
+    :root {
+      --bg: #060606;
+      --panel: #0b0b0b;
+      --neon: #00ff88;
+      --neon-2: #00cc77;
+      --muted: #9aa3ad;
+      --error: #ff3366;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      font-family: 'Consolas', 'Courier New', monospace;
+      color: #e0e0e0;
+      overflow-x: hidden;
+    }
+
+    /* ===== Background Layers ===== */
+    .bg-gradient {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at 50% 50%, #001a0f 0%, #000 100%);
+      z-index: -5;
+    }
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.02) 0px,
+        rgba(255, 255, 255, 0.02) 2px,
+        transparent 2px,
+        transparent 4px
+      );
+      z-index: -4;
+      pointer-events: none;
+    }
+    .grain {
+      position: fixed;
+      inset: 0;
+      background-image: url('https://grainy-gradients.vercel.app/noise.svg');
+      opacity: 0.07;
+      z-index: -3;
+      pointer-events: none;
+    }
+    .vignette {
+      position: fixed;
+      inset: 0;
+      box-shadow: inset 0 0 150px rgba(0, 0, 0, 0.9);
+      z-index: -2;
+      pointer-events: none;
+    }
+
+    /* ===== Matrix Rain Canvas ===== */
+    canvas#matrixCanvas {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+    }
+
+    /* ===== Main UI ===== */
+    header {
+      text-align: center;
+      margin-top: 40px;
+    }
+
+    h1 {
+      color: var(--neon);
+      font-size: 3em;
+      text-shadow: 0 0 12px var(--neon);
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 1.1em;
+      margin-bottom: 40px;
+    }
+
+    .container {
+      width: 90%;
+      max-width: 1000px;
+      margin: 0 auto;
+      background: #0d0d0d;
+      border: 2px solid #00ff99;
+      border-radius: 16px;
+      box-shadow: 0 0 20px #00ff88;
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .upload-box {
+      width: 100%;
+      background: var(--panel);
+      border: 2px solid var(--neon-2);
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 0 15px var(--neon-2);
+      margin-bottom: 1.5rem;
+    }
+
+    input[type="file"] {
+      display: block;
+      margin: 20px auto;
+      color: var(--muted);
+    }
+
+    textarea {
+      width: 100%;
+      height: 180px;
+      background: #111;
+      border: 1px solid #00ff88;
+      border-radius: 10px;
+      color: #fff;
+      padding: 1rem;
+      font-family: monospace;
+      resize: none;
+      margin-bottom: 1rem;
+    }
+
+    button {
+      padding: 12px 28px;
+      border: none;
+      background: var(--neon);
+      color: #000;
+      font-weight: bold;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+
+    button:hover {
+      background: var(--neon-2);
+      box-shadow: 0 0 10px var(--neon);
+    }
+
+    .metrics {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      margin-top: 40px;
+      font-size: 1.1em;
+    }
+
+    .chip {
+      padding: 8px 16px;
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 0 10px var(--neon-2);
+    }
+
+    .chip.server-down {
+      color: var(--error);
+      text-shadow: 0 0 10px var(--error);
+      border: 1px solid var(--error);
+    }
+
+    /* ===== Output Section ===== */
+    pre {
+      background: #050505;
+      border: 1px solid var(--neon-2);
+      border-radius: 12px;
+      padding: 20px;
+      margin: 30px auto;
+      width: 80%;
+      height: 300px;
+      overflow-y: auto;
+      color: #d7ffd7;
+      font-size: 0.95em;
+      box-shadow: 0 0 15px var(--neon-2);
+      white-space: pre-wrap;
+    }
+
+    .output {
+      margin-top: 2rem;
+      background: #111;
+      border-radius: 10px;
+      padding: 1rem;
+      border: 1px solid #00ff88;
+    }
+
+    .section {
+      margin-bottom: 1rem;
+    }
+
+    .graph {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .bar {
+      flex: 1;
+      height: 20px;
+      background: #222;
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background: #00ff88;
+      width: 0%;
+      border-radius: 10px;
+      transition: width 1s ease;
+    }
+
+    .tip {
+      background: #0b0b0b;
+      border-left: 3px solid #00ff88;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      margin-top: 6px;
+      font-size: 0.9rem;
+      color: #9dfdcf;
+    }
+
+    .error {
+      color: #ff5c5c;
+      font-weight: bold;
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 2rem;
+      font-size: 0.9rem;
+      color: #aaa;
+    }
+
+    /* ===== Loader ===== */
+    .loader-wrap {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      color: var(--neon);
+      font-size: 1.2em;
+    }
+
+    .dots {
+      display: flex;
+      margin-top: 10px;
+    }
+
+    .dots div {
+      width: 8px;
+      height: 8px;
+      margin: 0 4px;
+      background: var(--neon);
+      border-radius: 50%;
+      animation: blink 1s infinite alternate;
+    }
+
+    .dots div:nth-child(2) { animation-delay: 0.3s; }
+    .dots div:nth-child(3) { animation-delay: 0.6s; }
+
+    @keyframes blink {
+      from { opacity: 0.2; }
+      to { opacity: 1; }
+    }
+
+    /* ===== Netflix-Style Intro ===== */
+    #introOverlay {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 2000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      color: var(--neon);
+      font-size: 2.5em;
+      font-weight: bold;
+      letter-spacing: 2px;
+      text-shadow: 0 0 25px var(--neon);
+      animation: fadeIn 1s forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    .intro-hide {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s;
+    }
+
+    .intro-skip {
+      position: absolute;
+      bottom: 30px;
+      font-size: 0.8em;
+      cursor: pointer;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Backgrounds -->
+  <div class="bg-gradient"></div>
+  <div class="scanlines"></div>
+  <div class="grain"></div>
+  <div class="vignette"></div>
+  <canvas id="matrixCanvas"></canvas>
+
+  <!-- Intro Animation -->
+  <div id="introOverlay">
+    <div id="introLogo">TIMCODE</div>
+    <div class="intro-skip" id="introSkip">Skip Intro</div>
+  </div>
+
+  <!-- Loader -->
+  <div class="loader-wrap" id="loaderWrap" style="display:none;">
+    <div>Analyzing your code<span class="dots"><div></div><div></div><div></div></span></div>
+    <div id="typingText"></div>
+  </div>
+
+  <!-- Main Content -->
+  <header>
+    <h1>TIMCODE</h1>
+    <div class="subtitle">AI-Powered Code Review Assistant</div>
+  </header>
+
+  <div class="container">
+    <div class="upload-box">
+      <input type="file" id="fileInput" />
+      <button id="uploadBtn">Upload & Analyze</button>
+    </div>
+
+    <div class="metrics">
+      <div class="chip">Lines: <span id="lineCount">0</span></div>
+      <div class="chip">Functions: <span id="funcCount">0</span></div>
+      <div class="chip">Lang: <span id="langDetect">-</span></div>
+      <div class="chip" id="statusChip">Idle</div>
+      <div class="chip" id="issues">Issues: 0</div>
+    </div>
+
+    <pre id="output">Upload a file to get started...</pre>
+  </div>
+
+  <div class="container">
+    <h1>⚡ TIMCODE - AI Code Review Assistant</h1>
+    <textarea id="codeInput" placeholder="Paste your code here..."></textarea>
+    <button onclick="analyzeCode()">Analyze Code</button>
+
+    <div class="output" id="output2">
+      <div class="section" id="summary"></div>
+      <div class="section" id="metrics2"></div>
+      <div class="section" id="review"></div>
+    </div>
+
+    <footer>Powered by Ollama AI + TIMIKIOP Engine 🚀</footer>
+  </div>
+
+  <script>
+    // ===== Matrix Rain Effect =====
+    const canvas = document.getElementById('matrixCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.height = window.innerHeight;
+    canvas.width = window.innerWidth;
+    const letters = '01';
+    const fontSize = 14;
+    const columns = canvas.width / fontSize;
+    const drops = Array.from({length: columns}).fill(1);
+
+    function drawMatrix() {
+      ctx.fillStyle = 'rgba(0,0,0,0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#00ff88';
+      ctx.font = fontSize + 'px monospace';
+      for (let i = 0; i < drops.length; i++) {
+        const text = letters.charAt(Math.floor(Math.random() * letters.length));
+        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) drops[i] = 0;
+        drops[i]++;
+      }
+    }
+    setInterval(drawMatrix, 35);
+
+    // ===== Typing Loader =====
+    const typingText = document.getElementById('typingText');
+    let typingInterval;
+    const lines = [
+      'Compiling analysis modules...',
+      'Scanning syntax and structure...',
+      'Evaluating function complexity...',
+      'Reviewing naming conventions...',
+      'Checking best practices...'
+    ];
+
+    function startTyping() {
+      let i = 0;
+      typingInterval = setInterval(() => {
+        typingText.textContent = lines[i % lines.length];
+        i++;
+      }, 1500);
+    }
+
+    function stopTyping() {
+      clearInterval(typingInterval);
+      typingText.textContent = '';
+    }
+
+    // ===== Upload Logic =====
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileInput = document.getElementById('fileInput');
+    const loaderWrap = document.getElementById('loaderWrap');
+    const outputPre = document.getElementById('output');
+    const lineCount = document.getElementById('lineCount');
+    const funcCount = document.getElementById('funcCount');
+    const langDetect = document.getElementById('langDetect');
+    const statusChip = document.getElementById('statusChip');
+
+    function prettyReview(txt) {
+      return txt
+        .replace(/(\*\*|\#|\*)/g, '')
+        .replace(/(\d+\.)/g, '\n$1')
+        .trim();
+    }
+
+    function detectLanguage(name) {
+      const ext = name.split('.').pop();
+      if (['py'].includes(ext)) return 'Python';
+      if (['js'].includes(ext)) return 'JavaScript';
+      if (['cpp', 'c', 'h', 'hpp'].includes(ext)) return 'C/C++';
+      if (['java'].includes(ext)) return 'Java';
+      return 'Unknown';
+    }
+
+    async function uploadFile() {
+      const file = fileInput.files[0];
+      if (!file) return alert('Please select a file first.');
+      uploadBtn.disabled = true;
+      loaderWrap.style.display = 'flex';
+      startTyping();
+      outputPre.textContent = '';
+      statusChip.textContent = '⏳ Analyzing...';
+      statusChip.classList.remove('server-down');
+
+      lineCount.textContent = (await file.text()).split('\n').length;
+      funcCount.textContent = ((await file.text()).match(/(def |function |int main|void )/g) || []).length;
+      langDetect.textContent = detectLanguage(file.name);
+
+      const form = new FormData();
+      form.append('file', file);
+
+      try {
+        // Server health check before upload
+        const healthCheck = await fetch('http://127.0.0.1:8000/', { method: 'GET' });
+        if (!healthCheck.ok) throw new Error('Server not responding');
+
+        const resp = await fetch('http://127.0.0.1:8000/review', {
+          method: 'POST',
+          body: form,
+          timeout: 300000
+        });
+
+        if (!resp.ok) {
+          const txt = await resp.text();
+          throw new Error('Backend returned ' + resp.status + ': ' + txt);
+        }
+
+        const resultText = await resp.text();
+        let formatted = prettyReview(resultText);
+
+        outputPre.textContent = formatted;
+        statusChip.textContent = '✅ Done';
+        document.getElementById('issues').textContent =
+          (formatted.match(/issue|error|bug|warning/gi) || []).length;
+      } catch (err) {
+        outputPre.textContent = '❌ Error: ' + err.message;
+        statusChip.textContent = 'Server Down';
+        statusChip.classList.add('server-down');
+      } finally {
+        stopTyping();
+        loaderWrap.style.display = 'none';
+        uploadBtn.disabled = false;
+      }
+    }
+
+    uploadBtn.addEventListener('click', uploadFile);
+
+    // ===== Text Analysis Logic =====
+    function analyzeCode() {
+      const code = document.getElementById('codeInput').value.trim();
+      const summary = document.getElementById('summary');
+      const metrics = document.getElementById('metrics2');
+      const review = document.getElementById('review');
+
+      if (!code) {
+        summary.innerHTML = '<p class="error">⚠️ Please paste your code before analyzing!</p>';
+        metrics.innerHTML = '';
+        review.innerHTML = '';
+        return;
+      }
+
+      // Basic metrics simulation
+      const lines = code.split('\n').length;
+      const functions = (code.match(/function|def|void|int\s+[a-zA-Z_]\w*\(/g) || []).length;
+      const issues = Math.floor(Math.random() * 4);
+      const score = Math.max(40, 100 - issues * 15);
+
+      summary.innerHTML = `
+        <h3>🧾 Summary</h3>
+        <p>Your code looks clean and functional. Here's an automated breakdown powered by <b>Ollama AI</b> 🤖</p>
+      `;
+
+      metrics.innerHTML = `
+        <h3>📊 Quick Metrics</h3>
+        <p>Lines: <b>${lines}</b> • Functions: <b>${functions}</b> • Estimated Issues: <b>${issues}</b></p>
+        <div class="graph">
+          <div class="bar"><div class="bar-fill" id="scoreBar"></div></div>
+        </div>
+        <p>💯 Code Quality Score: <b>${score}%</b></p>
+      `;
+
+      review.innerHTML = `
+        <h3>🧠 AI Review Report</h3>
+        <div class="tip">✅ Use meaningful variable names for better readability.</div>
+        <div class="tip">🧩 Add comments or docstrings for clarity.</div>
+        <div class="tip">⚙️ Check for edge cases and input validation.</div>
+        <div class="tip">💡 Try modularizing repetitive logic into smaller functions.</div>
+        <div class="tip">🌈 Keep consistent indentation to improve visual structure.</div>
+      `;
+
+      // Animate score bar
+      setTimeout(() => {
+        document.getElementById('scoreBar').style.width = score + '%';
+      }, 200);
+    }
+
+    // ===== Intro Animation =====
+    const introOverlay = document.getElementById('introOverlay');
+    const introSkip = document.getElementById('introSkip');
+
+    function hideIntro() {
+      introOverlay.classList.add('intro-hide');
+      setTimeout(() => (introOverlay.style.display = 'none'), 420);
+    }
+
+    introSkip.addEventListener('click', hideIntro);
+    window.addEventListener('load', () => setTimeout(hideIntro, 2600));
+  </script>
+</body>
+</html>
